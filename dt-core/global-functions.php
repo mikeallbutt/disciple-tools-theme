@@ -714,7 +714,11 @@ if ( ! defined( 'DT_FUNCTIONS_READY' ) ){
                     <div class="small button-group" style="display: inline-block">
                         <?php foreach ( $fields[$field_key]["default"] as $option_key => $option_value ): ?>
                             <?php
-                            $class = ( in_array( $option_key, $post[$field_key] ?? [] ) ) ?
+                            $haystack = $post[ $field_key ] ?? [];
+                            if ( ! is_array( $haystack ) ) {
+                                $haystack = explode( ' ', $haystack );
+                            }
+                            $class = ( in_array( $option_key, $haystack ) ) ?
                                 "selected-select-button" : "empty-select-button"; ?>
                             <button id="<?php echo esc_html( $option_key ) ?>" type="button" data-field-key="<?php echo esc_html( $field_key ); ?>"
                                     class="dt_multi_select <?php echo esc_html( $class ) ?> select-button button" <?php echo esc_html( $disabled ); ?>>
@@ -922,6 +926,84 @@ if ( ! defined( 'DT_FUNCTIONS_READY' ) ){
                 }
             }
             return false;
+        }
+    }
+
+    /**
+     * Dump and die
+     */
+    if ( !function_exists( 'dd' ) ) {
+        function dd( ...$params ) {
+            foreach ( $params as $param ) {
+                var_dump( $param );
+            }
+
+            exit;
+        }
+    }
+
+    /**
+     * Convert a slug like 'name_or_title' to a label like 'Name or Title'
+     */
+    if ( !function_exists( 'dt_label_from_slug' ) ) {
+        function dt_label_from_slug( $slug ) {
+            $string = preg_replace( '/^' . preg_quote( 'dt_', '/' ) . '/', '', $slug );
+            $string = str_replace( "_", ' ', $string );
+
+            /* Words that should be entirely lower-case */
+            $articles_conjunctions_prepositions = [
+                'a',
+                'an',
+                'the',
+                'and',
+                'but',
+                'or',
+                'nor',
+                'if',
+                'then',
+                'else',
+                'when',
+                'at',
+                'by',
+                'from',
+                'for',
+                'in',
+                'off',
+                'on',
+                'out',
+                'over',
+                'to',
+                'into',
+                'with'
+            ];
+            /* Words that should be entirely upper-case (need to be lower-case in this list!) */
+            $acronyms_and_such = [
+                'asap',
+                'unhcr',
+                'wpse',
+                'dt'
+            ];
+            /* split title string into array of words */
+            $words = explode( ' ', mb_strtolower( $string ) );
+            /* iterate over words */
+            foreach ( $words as $position => $word ) {
+                /* re-capitalize acronyms */
+                if ( in_array( $word, $acronyms_and_such ) ) {
+                    $words[ $position ] = mb_strtoupper( $word );
+                    /* capitalize first letter of all other words, if... */
+                } elseif (
+                    /* ...first word of the title string... */
+                    0 === $position ||
+                    /* ...or not in above lower-case list*/
+                    !in_array( $word, $articles_conjunctions_prepositions )
+                ) {
+                    $words[ $position ] = ucwords( $word );
+                }
+            }
+            /* re-combine word array */
+            $string = implode( ' ', $words );
+            /* return title string in title case */
+            return $string;
         }
     }
 
