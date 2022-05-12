@@ -166,14 +166,16 @@ abstract class DT_Magic_Url_Base {
         }
 
         // If determined, associate with relevant hook
+        $lang = apply_filters( 'ml_locale_change', $lang );
         if ( ! empty( $lang ) ) {
-            add_filter( 'determine_locale', function ( $locale ) use ( $lang ) {
-                $lang_code = sanitize_text_field( wp_unslash( $lang ) );
-                if ( ! empty( $lang_code ) ) {
-                    return apply_filters( 'ml_locale_change', $lang_code );
-                }
 
-                return $locale;
+            // Adjust user's locale within current request context
+            if ( ! empty( wp_get_current_user() ) ) {
+                wp_get_current_user()->locale = $lang;
+            }
+
+            add_filter( 'determine_locale', function ( $locale ) use ( $lang ) {
+                return $lang;
             } );
         }
     }
@@ -347,7 +349,9 @@ abstract class DT_Magic_Url_Base {
                 }
             }
         }
-        unset( $wp_scripts->registered['mapbox-search-widget']->extra['group'] ); //lets the mapbox geocoder work
+        if ( isset( $wp_scripts->registered['mapbox-search-widget'] ) && is_object( $wp_scripts->registered['mapbox-search-widget'] ) ){
+            unset( $wp_scripts->registered['mapbox-search-widget']->extra['group'] ); //lets the mapbox geocoder work
+        }
     }
 
     /**

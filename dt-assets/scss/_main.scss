@@ -1375,24 +1375,32 @@ label.dt-switch:active:after {
     border-radius: 2px;
 }
 
+/**
+DT Icons. See https://developers.disciple.tools/style-guide for more on colors
+ */
 img.dt-icon {
     height: 15px;
     width: 15px;
     filter:invert(18%) sepia(0%) saturate(19%) hue-rotate(170deg) brightness(108%) contrast(98%);
-
-
 }
-img.dt-blue-icon {
+i.dt-icon {
+    font-size: 15px;
+    filter:invert(18%) sepia(0%) saturate(19%) hue-rotate(170deg) brightness(108%) contrast(98%);
+}
+img.dt-blue-icon, i.dt-blue-icon {
     filter: invert(41%) sepia(42%) saturate(518%) hue-rotate(164deg) brightness(94%) contrast(100%);
 }
-img.dt-white-icon {
+img.dt-white-icon, i.dt-white-icon {
     filter: invert(100%) sepia(100%) saturate(6%) hue-rotate(105deg) brightness(102%) contrast(102%);
 }
-img.dt-green-icon {
+img.dt-green-icon, i.dt-green-icon {
     filter: invert(52%) sepia(77%) saturate(383%) hue-rotate(73deg) brightness(98%) contrast(83%);
 }
-img.dt-red-icon {
+img.dt-red-icon, i.dt-red-icon {
     filter: invert(23%) sepia(34%) saturate(4972%) hue-rotate(343deg) brightness(121%) contrast(92%);
+}
+img.dt-black-icon, i.dt-black-icon {
+    filter: invert(0%) sepia(0%) saturate(17%) hue-rotate(193deg) brightness(99%) contrast(101%);
 }
 
 .template-new-post {
@@ -1880,4 +1888,95 @@ img.dt-red-icon {
 // Selected side menu item highlights
 .side-menu-item-highlight {
     font-weight: bold;
+}
+
+/**
+ * Bulk Record Adding
+ */
+#form_fields_records {
+    overflow-x: auto !important;
+
+    .form-fields-record {
+        display: flex;
+        //justify-content: center;
+    }
+
+    .record-divider {
+        display: none;
+        background-color:rgb(236, 245, 252);
+        margin: 3px -15px 15px -15px;
+        text-align: center;
+        span {
+            padding: 0;
+            margin: 0;
+        }
+    }
+    .record-removal-button {
+        margin: 5px;
+        min-width: 25px !important;
+    }
+
+    .landscape-record-removal-button {
+        display: block;
+        .record-removal-button {
+            margin: 10px 0 0 0;
+        }
+    }
+
+    .form-field {
+        margin-inline-end: 10px;
+        flex-basis: 200px;
+        flex-grow: 0;
+        flex-shrink: 0;
+    }
+
+    .form-fields-record-subsequent {
+        .section-subheader {
+            display: none !important;
+        }
+        .help-text {
+            display: none !important;
+        }
+        .field-value-copy-controls {
+            display: none !important;
+        }
+    }
+    .dt_location_grid .typeahead__container button{
+        width: 65px;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    @media only screen and (max-width: 782px) {
+        .form-fields-record {
+            flex-direction: column;
+        }
+
+        .form-field {
+            flex-basis: 50px;
+        }
+
+        .record-divider {
+            display: block;
+        }
+
+        .landscape-record-removal-button {
+            display: none;
+        }
+
+        .form-fields-record-subsequent {
+            .section-subheader {
+                display: block !important;
+            }
+            .help-text {
+                display: block !important;
+            }
+            .field-value-copy-controls {
+                display: none !important;
+            }
+        }
+        .dt_location_grid .typeahead__container button{
+            width: auto;
+        }
+    }
 }
