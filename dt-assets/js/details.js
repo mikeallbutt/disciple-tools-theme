@@ -3,6 +3,7 @@ jQuery(document).ready(function($) {
   let post_id = window.detailsSettings.post_id
   let post_type = window.detailsSettings.post_type
   let post = window.detailsSettings.post_fields
+  let post_settings = window.detailsSettings.post_settings
   let field_settings = window.detailsSettings.post_settings.fields
   window.post_type_fields = field_settings
   let rest_api = window.API
@@ -21,35 +22,48 @@ jQuery(document).ready(function($) {
     element.innerHTML = window.lodash.escape( window.detailsSettings.translations.created_on.replace('%s', formattedDate) )
   })
 
-  $('input.text-input').change(function(){
-    const id = $(this).attr('id')
-    const val = $(this).val()
-    if ( $(this).prop('required') && val === ''){
-      return;
+  const updateTextMetaOnChange = updateTextMeta()
+  $('input.text-input').change(updateTextMetaOnChange)
+  $('input.text-input').blur(updateTextMetaOnChange)
+
+  function updateTextMeta() {
+    let isUpdating = false
+
+    return function() {
+      if (isUpdating) return
+      isUpdating = true
+
+      const id = $(this).attr('id');
+      if ($(this).prop('required') && $(this).val() === '') {
+        return;
+      }
+      let val = $(this).val();
+      const intVal = parseInt(val);
+
+      const min = parseInt(this.min);
+      const max = parseInt(this.max);
+
+      if (min && intVal < min) {
+        $(this).val(this.min)
+        val = parseInt(this.min)
+      }
+      if (max && intVal > max) {
+        $(this).val(this.max)
+        val = parseInt(this.max)
+      }
+
+      $(`#${id}-spinner`).addClass('active');
+      rest_api.update_post(post_type, post_id, { [id]: val }).then((newPost) => {
+        $(`#${id}-spinner`).removeClass('active');
+        $(document).trigger("text-input-updated", [newPost, id, val]);
+        isUpdating = false
+      }).catch((error) => {
+        handleAjaxError(error)
+        isUpdating = false
+      })
     }
-    if (this.min && val < this.min) {
-      return
-    }
-    if (this.max && val > this.max) {
-      return
-    }
-    $(`#${id}-spinner`).addClass('active')
-    rest_api.update_post(post_type, post_id, { [id]: val }).then((newPost)=>{
-      $(`#${id}-spinner`).removeClass('active')
-      $( document ).trigger( "text-input-updated", [ newPost, id, val ] );
-    }).catch(handleAjaxError)
-  })
-  $('input.text-input').blur(function(){
-    const val = $(this).val()
-    if (this.min && val < this.min) {
-      $(this).val(this.min)
-      return
-    }
-    if (this.max && val > this.max) {
-      $(this).val(this.max)
-      return
-    }
-  })
+  }
+
 
   $('.dt_textarea').change(function(){
     const id = $(this).attr('id')
@@ -377,8 +391,13 @@ jQuery(document).ready(function($) {
       multiselect: {
         matchOn: ["ID"],
         data: function () {
-          return (post[field_id] || [] ).map(g=>{
-            return {ID:g.ID, name:g.post_title, label: g.label}
+          return (post[field_id] || []).map(g => {
+            return {
+              ID: g.ID,
+              name: g.post_title,
+              label: g.label,
+              status: g['status'] ?? null
+            }
           })
         },
         callback: {
@@ -404,6 +423,9 @@ jQuery(document).ready(function($) {
             let cancelButton = $(`#${el.id} .typeahead__cancel-button`);
             cancelButton.css('pointerEvents','none');
           }
+
+          // If available, display item status colours within labels
+          set_item_label_status(this);
         },
         onClick: function(node, a, item, event){
           $(`#${field_id}-spinner`).addClass('active')
@@ -411,6 +433,12 @@ jQuery(document).ready(function($) {
             $(`#${field_id}-spinner`).removeClass('active')
             $( document ).trigger( "dt-post-connection-added", [ new_post, field_id ] );
           }).catch(err => { console.error(err) })
+
+          // If present, adjust status label, so as to remain uniform
+          if (item['status']) {
+            item['status']['label'] = item['status']['label'] ? '[' + window.lodash.escape(item['status']['label']).toLowerCase() + ']' : '';
+          }
+
           this.addMultiselectItemLayout(item)
           event.preventDefault()
           this.hideLayout();
@@ -422,6 +450,7 @@ jQuery(document).ready(function($) {
           $(`#${field_id}-result-container`).html(text);
         },
         onHideLayout: function (event, query) {
+          set_item_label_status(this);
           if ( !query ){
             $(`#${field_id}-result-container`).empty()
           }
@@ -433,6 +462,34 @@ jQuery(document).ready(function($) {
       }
     })
   })
+
+  function set_item_label_status(field_typeahead) {
+    if (field_typeahead) {
+      $.each(field_typeahead.items, function (idx, item) {
+        if (item['ID'] && item['status'] && item['status']['color']) {
+          $(field_typeahead.label.container[0]).find("a[href$=\\/" + item['ID']).each(function () {
+
+            // Obtain label handle
+            let label = $(this).parent();
+
+            // Once we have a handle, adjust colour styling accordingly
+            label.css('border-left', '3px solid ' + item['status']['color']);
+
+            // Assign corresponding tooltip, using title as trigger
+            if (item['status']['label']) {
+              label.attr('title', '');
+              label.tooltip({
+                content: item['status']['label'],
+                show: {effect: 'fade', duration: 100}
+              });
+            }
+          });
+        }
+      });
+
+      field_typeahead.adjustInputSize();
+    }
+  }
 
   //multi_select typeaheads
   for (let input of $(".multi_select .typeahead__query input")) {
@@ -1175,6 +1232,50 @@ jQuery(document).ready(function($) {
     percentPosition: true
   });
   //leave at the end of this file
+
+  /**
+   * Merging
+   */
+
+  $('.open-merge-with-post').on("click", function (evt) {
+    let merge_post_type = $(evt.currentTarget).data('post_type');
+    if (!window.Typeahead['.js-typeahead-merge_with']) {
+      $.typeahead({
+        input: '.js-typeahead-merge_with',
+        minLength: 0,
+        accent: true,
+        searchOnFocus: true,
+        source: TYPEAHEADS.typeaheadPostsSource(merge_post_type, {'include-users': false}),
+        templateValue: "{{name}}",
+        template: window.TYPEAHEADS.contactListRowTemplate,
+        dynamic: true,
+        hint: true,
+        emptyTemplate: window.lodash.escape(window.wpApiShare.translations.no_records_found),
+        callback: {
+          onClick: function (node, a, item) {
+            $('.confirm-merge-with-post').show()
+            $('#confirm-merge-with-post-id').val(item.ID)
+            $('#name-of-post-to-merge').html(item.name)
+          },
+          onResult: function (node, query, result, resultCount) {
+            let text = TYPEAHEADS.typeaheadHelpText(resultCount, query, result)
+            $('#merge_with-result-container').html(text);
+          },
+          onHideLayout: function () {
+            $('.merge_with-result-container').html("");
+          },
+        },
+      });
+    }
+    let user_select_input = $(`.js-typeahead-merge_with`)
+    $('.search_merge_with').on('click', function () {
+      user_select_input.val("")
+      user_select_input.trigger('input.typeahead')
+      user_select_input.focus()
+    })
+    $('#merge-with-post-modal').foundation('open');
+  });
+
 })
 
 

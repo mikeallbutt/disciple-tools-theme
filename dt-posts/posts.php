@@ -949,7 +949,7 @@ class Disciple_Tools_Posts
                              */
                             $equality = '=';
                             $value = is_numeric( $query_value ) ? esc_sql( $query_value ) : [];
-                            if ( isset( $query_value['operator'] ) ){
+                            if ( isset( $query_value['operator'] ) ) {
                                 $equality = esc_sql( $query_value['operator'] );
                             }
                             if ( isset( $query_value['number'] ) ){
@@ -1018,6 +1018,9 @@ class Disciple_Tools_Posts
         global $wpdb;
 
         $post_settings = DT_Posts::get_post_settings( $post_type );
+        if ( !isset( $post_settings["fields"] ) || empty( $post_settings["fields"] ) ){
+            return new WP_Error( __FUNCTION__, "$post_type settings not yet loaded", [ 'status' => 400 ] );
+        }
         $post_fields = $post_settings["fields"];
 
         $search = "";
@@ -1455,7 +1458,7 @@ class Disciple_Tools_Posts
                         if ( isset( $value["delete"] ) && $value["delete"] == true ){
                             if ( isset( $field_settings[ $field_key ] ) && isset( $field_settings[$field_key]['private'] ) && $field_settings[$field_key]['private'] ) {
                                 if ( !$current_user_id ){
-                                    return new WP_Error( __FUNCTION__, "Cannot update post_user_meta fields for no user.", [ 'status' => 400 ] );
+                                    return new WP_Error( __FUNCTION__, "Cannot update post_user_meta fields for no user on {$field_key}.", [ 'status' => 400 ] );
                                 }
 
                                 //delete user meta
@@ -1476,7 +1479,7 @@ class Disciple_Tools_Posts
                             $existing_array = isset( $existing_contact[ $field_key ] ) ? $existing_contact[ $field_key ] : [];
                             if ( isset( $field_settings[ $field_key ] ) && isset( $field_settings[$field_key]['private'] ) && $field_settings[$field_key]['private'] ) {
                                 if ( !$current_user_id ){
-                                    return new WP_Error( __FUNCTION__, "Cannot update post_user_meta fields for no user.", [ 'status' => 400 ] );
+                                    return new WP_Error( __FUNCTION__, "Cannot update post_user_meta fields for no user on {$field_key}.", [ 'status' => 400 ] );
                                 }
                                 $insert = [];
                                 $insert = $wpdb->insert(        $wpdb->dt_post_user_meta, [
@@ -1737,8 +1740,15 @@ class Disciple_Tools_Posts
                 } else if ( isset( $field["value"] ) ) {
                     $field["key"] = "new-".$details_key;
                     //create field
-                    if ( !empty( $field["value"] ) ){
+                    if ( ! empty( $field["value"] ) ) {
+                        // Geocode any identified addresses ahead of field creation
                         $potential_error = self::add_post_contact_method( $post_settings, $post_id, $field["key"], $field["value"], $field );
+                        if ( is_wp_error( $potential_error ) ){
+                            return $potential_error;
+                        }
+                        if ( $details_key === "contact_address" && isset( $field["geolocate"] ) && !empty( $field["geolocate"] ) ){
+                            $potential_error = self::geolocate_addresses( $post_id, $post_settings['post_type'], $details_key, $field["value"] );
+                        }
                     }
                 } else {
                     return new WP_Error( __FUNCTION__, "Is not an array or missing value on: " . $details_key, [ 'status' => 400 ] );
@@ -1773,7 +1783,7 @@ class Disciple_Tools_Posts
                     if ( isset( $value["value"] ) || ( !empty( $value["delete"] && !empty( $value['id'] ) ) ) ){
                         $current_user_id = get_current_user_id();
                         if ( !$current_user_id ){
-                            return new WP_Error( __FUNCTION__, "Cannot update post_user_meta fields for no user.", [ 'status' => 400 ] );
+                            return new WP_Error( __FUNCTION__, "Cannot update post_user_meta fields for no user on {$field_key}.", [ 'status' => 400 ] );
                         }
                         if ( !empty( $value["id"] ) ) {
                             //see if we find the value with the correct id on this contact for this user.
@@ -1869,7 +1879,7 @@ class Disciple_Tools_Posts
 
                 $current_user_id = get_current_user_id();
                 if ( !$current_user_id ){
-                    return new WP_Error( __FUNCTION__, "Cannot update post_user_meta fields for no user.", [ 'status' => 400 ] );
+                    return new WP_Error( __FUNCTION__, "Cannot update post_user_meta fields for no user on {$field_key}.", [ 'status' => 400 ] );
                 }
 
                 //Find the id if a row exists that has the same user_id same post_id and same meta_key
@@ -1891,7 +1901,7 @@ class Disciple_Tools_Posts
                             "meta_key" => $field_key,
                         ]
                     );
-                    if ( !$update ) {
+                    if ( $update === false ) {
                         return new WP_Error( __FUNCTION__, "Something wrong on field: " . $field_key, [ 'status' => 500 ] );
                     }
                 } else {
@@ -2508,6 +2518,65 @@ class Disciple_Tools_Posts
     }
 
     /**
+     * Determine status information for given id array
+     *
+     * @param array $ids
+     * @param string $post_type
+     *
+     * @return array
+     */
+    public static function get_post_status( array $ids, string $post_type ): array {
+        global $wpdb;
+
+        // Determine corresponding status key for given post type
+        $post_settings = apply_filters( 'dt_get_post_type_settings', [], $post_type );
+        if ( empty( $post_settings['status_field']['status_key'] ) ) {
+            return [];
+        }
+        $status_key = $post_settings['status_field']['status_key'];
+
+        // Attempt to extract status keys for given ids
+        $ids_sql           = dt_array_to_sql( array_unique( $ids ) );
+        //phpcs:disable
+        //WordPress.WP.PreparedSQL.NotPrepare
+        $post_meta_results = $wpdb->get_results( "
+            SELECT *
+            FROM $wpdb->postmeta
+            WHERE post_id IN ( $ids_sql )
+            AND meta_key = '$status_key'
+        ", ARRAY_A );
+        //phpcs:enable
+
+        // Extract full status details
+        $status_settings = $post_settings['fields'];
+        $statuses        = [];
+        foreach ( $post_meta_results as $meta ) {
+            if ( isset( $status_settings[ $status_key ]['default'][ $meta['meta_value'] ] ) ) {
+                $default                      = $status_settings[ $status_key ]['default'][ $meta['meta_value'] ];
+                $statuses[ $meta['post_id'] ] = [
+                    'key'   => $meta['meta_value'],
+                    'label' => $default['label'],
+                    'color' => $default['color'] ?? ''
+                ];
+            }
+        }
+
+        return $statuses;
+    }
+
+    public static function get_post_field_option( $field_settings, $field_key, $option_key ): array {
+        return $field_settings[ $field_key ]['default'][ $option_key ] ?? [];
+    }
+
+    public static function get_post_field_options_keys( $field_settings, $field_key ): array {
+        return array_keys( $field_settings[ $field_key ]['default'] ) ?? [];
+    }
+
+    public static function get_post_field_option_attribute( $field_settings, $field_key, $option_key, $option_attrib ) {
+        return $field_settings[ $field_key ]['default'][ $option_key ][ $option_attrib ] ?? null;
+    }
+
+    /**
      * Reduced the number of fields on a post to what is useful in D.T
      *
      * @param object $post
@@ -2515,12 +2584,12 @@ class Disciple_Tools_Posts
      */
     public static function filter_wp_post_object_fields( $post, $meta = null ){
         $filtered_post = [
-            "ID" => $post["ID"],
-            "post_type" => $post["post_type"],
+            "ID"            => $post["ID"],
+            "post_type"     => $post["post_type"],
             "post_date_gmt" => $post["post_date_gmt"],
-            "post_date" => $post["post_date"],
-            "post_title" => wp_specialchars_decode( $post["post_title"] ),
-            "permalink" => get_permalink( $post["ID"] )
+            "post_date"     => $post["post_date"],
+            "post_title"    => wp_specialchars_decode( $post["post_title"] ),
+            "permalink"     => get_permalink( $post["ID"] )
         ];
         if ( $meta ){
             $filtered_post["meta"] = $meta;
@@ -2531,6 +2600,9 @@ class Disciple_Tools_Posts
             $label = ( $translation ? $translation : $post["post_title"] );
             $filtered_post["label"] = $label;
         }
+
+        // Capture status info
+        $filtered_post['status'] = self::get_post_status( [ $post['ID'] ], $post['post_type'] )[ $post['ID'] ] ?? null;
 
         return $filtered_post;
     }
@@ -2547,6 +2619,123 @@ class Disciple_Tools_Posts
         $details["value"] = $value;
         $details["key"] = $key;
         return $details;
+    }
+
+    private static function validate_lat_long( $address ): string {
+        $split_address = explode( ",", $address );
+
+        return ( count( $split_address ) === 2 ) && ( preg_match( '/^[-]?(([0-8]?[0-9])\.(\d+))|(90(\.0+)?),[-]?((((1[0-7][0-9])|([0-9]?[0-9]))\.(\d+))|180(\.0+)?)$/', $split_address[0] . ',' . $split_address[1] ) === 1 ) ? 'coordinates' : 'address';
+    }
+    /**
+     * Helper functions to transpose geocoded addresses.
+     *
+     * @param  $post_id
+     * @param  $post_type
+     * @param  $field_key
+     * @param  $address_value
+     * @return bool
+     */
+    public static function geolocate_addresses( $post_id, $post_type, $field_key, $address_value ): bool {
+        // Check if geocoder apis exist.
+        if ( class_exists( "DT_Mapbox_API" ) && DT_Mapbox_API::get_key() || class_exists( "Disciple_Tools_Google_Geocode_API" ) && Disciple_Tools_Google_Geocode_API::get_key() ){
+
+            $address_transpose_success = false;
+
+            // Determine geocoder api to be used.
+            $api_class        = 'Disciple_Tools_Google_Geocode_API';
+            $using_google_api = true;
+
+            if ( empty( Disciple_Tools_Google_Geocode_API::get_key() ) ) {
+                $api_class        = 'DT_Mapbox_API';
+                $using_google_api = false;
+            }
+
+            // Check if address or coordinates and if coordinates splitting into latitude and longitude
+            $lookup  = self::validate_lat_long( $address_value );
+            $address = $lookup === 'coordinates'
+                ? explode( ",", preg_replace( '/\s/', '', $address_value ) )
+                : $address_value;
+
+            // Getting results
+            $result = $lookup === 'coordinates'
+                ? (
+                $using_google_api
+                    ? $api_class::query_google_api_reverse( $address_value )
+                    : $api_class::reverse_lookup( $address[1], $address[0] )
+                ) : (
+                $using_google_api
+                    ? $api_class::query_google_api( $address, 'core' )
+                    : $api_class::lookup( $address )
+                );
+
+            // Getting longitude
+            $lng = $lookup === 'coordinates'
+                ? $address[1]
+                : (
+                $using_google_api
+                    ? $result['lng']
+                    : $api_class::parse_raw_result( $result, 'lng', true )
+                );
+
+            // Getting latitude
+            $lat = $lookup === 'coordinates'
+                ? $address[0]
+                : (
+                $using_google_api
+                    ? $result['lat']
+                    : $api_class::parse_raw_result( $result, 'lat', true )
+                );
+
+            // Reformatting $address
+            $address = $lookup === 'coordinates'
+                ? (
+                $using_google_api
+                    ? (
+                $result
+                    ? $api_class::parse_raw_result( $result, 'formatted_address' )
+                    : $address_value
+                )
+                    : $api_class::parse_raw_result( $result, 'full_location_name', true )
+                )
+                : $address_value;
+
+            if ( $result !== false ) {
+
+                // Determine lookup relevance
+                $relevance = $using_google_api
+                    ? 0.6 // to change if there's any data equals to Mapbox's relevance
+                    : $result['features'][0]['relevance'];
+
+                // Transpose if relevance is high!
+                if ( $relevance >= 0.5 ) {
+
+                    // Inserting to location grid meta
+                    $geocoder           = new Location_Grid_Geocoder();
+                    $grid_row           = $geocoder->get_grid_id_by_lnglat( $lng, $lat );
+                    $location_meta_grid = [
+                        'post_id'   => $post_id,
+                        'post_type' => $post_type,
+                        'grid_id'   => $grid_row['grid_id'],
+                        'lng'       => $lng,
+                        'lat'       => $lat,
+                        'level'     => '',
+                        'label'     => $address
+                    ];
+
+                    // Validating and adding to location grid meta
+                    Location_Grid_Meta::validate_location_grid_meta( $location_meta_grid );
+                    $grid_id = Location_Grid_Meta::add_location_grid_meta( $post_id, $location_meta_grid );
+
+                    // Indicate final location grid meta insert result
+                    $address_transpose_success = ! empty( $grid_id ) && ! is_wp_error( $grid_id );
+                }
+            }
+
+            // Keep original values which have not been geo-transposed.
+            return $address_transpose_success;
+        }
+
+        return false;
     }
 
 }

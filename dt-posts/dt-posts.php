@@ -237,6 +237,7 @@ class DT_Posts extends Disciple_Tools_Posts {
         if ( is_wp_error( $post_id ) ){
             return $post_id;
         }
+
         $potential_error = self::update_post_contact_methods( $post_settings, $post_id, $contact_methods_and_connections );
         if ( is_wp_error( $potential_error ) ){
             return $potential_error;
@@ -482,6 +483,11 @@ class DT_Posts extends Disciple_Tools_Posts {
         if ( $check_permissions && !self::can_view( $post_type, $post_id ) ) {
             return new WP_Error( __FUNCTION__, "No permissions to read $post_type with ID $post_id", [ 'status' => 403 ] );
         }
+        //@todo re-enable when load order is implemented.
+        //$post_types = self::get_post_types();
+        //if ( !in_array( $post_type, $post_types ) ){
+        //    return new WP_Error( __FUNCTION__, "$post_type in not a valid post type", [ 'status' => 400 ] );
+        //}
         $current_user_id = get_current_user_id();
         $cached = wp_cache_get( "post_" . $current_user_id . '_' . $post_id );
         if ( $cached && $use_cache ){
@@ -489,6 +495,13 @@ class DT_Posts extends Disciple_Tools_Posts {
         }
 
         $wp_post = get_post( $post_id );
+        $field_settings = self::get_post_field_settings( $post_type );
+        if ( empty( $field_settings ) ){
+            return new WP_Error( __FUNCTION__, "post type not yet set up. Please load in a hook.", [ 'status' => 400 ] );
+        }
+        if ( !$wp_post ){
+            return new WP_Error( __FUNCTION__, "post does not exist", [ 'status' => 400 ] );
+        }
         if ( $use_cache === true && $current_user_id && !$silent ){
             dt_activity_insert( [
                 'action' => 'viewed',
@@ -496,10 +509,6 @@ class DT_Posts extends Disciple_Tools_Posts {
                 'object_id' => $post_id,
                 'object_name' => $wp_post->post_title
             ] );
-        }
-        $field_settings = self::get_post_field_settings( $post_type );
-        if ( !$wp_post ){
-            return new WP_Error( __FUNCTION__, "post does not exist", [ 'status' => 400 ] );
         }
 
         /**
@@ -551,7 +560,6 @@ class DT_Posts extends Disciple_Tools_Posts {
 
         return $fields;
     }
-
 
     /**
      * Get a list of posts
@@ -643,10 +651,12 @@ class DT_Posts extends Disciple_Tools_Posts {
             self::adjust_post_custom_fields( $post_type, $record["ID"], $record, $fields_to_return, $all_posts[$record["ID"]] ?? [], $all_post_user_meta[$record["ID"]] ?? [] );
             $record["permalink"] = $site_url . '/' . $post_type .'/' . $record["ID"];
             $record["name"] = wp_specialchars_decode( $record["post_title"] );
-            $record["post_date"] = [
-                "timestamp" => is_numeric( $record["post_date"] ) ? $record["post_date"] : dt_format_date( $record["post_date"], "U" ),
-                "formatted" => dt_format_date( $record["post_date"] )
-            ];
+            if ( !isset( $record["post_date"]["timestamp"], $record["post_date"]["formatted"] ) ){
+                $record["post_date"] = [
+                    "timestamp" => is_numeric( $record["post_date"] ) ? $record["post_date"] : dt_format_date( $record["post_date"], "U" ),
+                    "formatted" => dt_format_date( $record["post_date"] )
+                ];
+            }
         }
         $data["posts"] = $records;
 
@@ -873,11 +883,49 @@ class DT_Posts extends Disciple_Tools_Posts {
             }
         }
 
-        $return = [
+        // Capture corresponding post record statuses, apply filters and return
+        return apply_filters( 'dt_get_viewable_compact', [
             "total" => sizeof( $compact ),
-            "posts" => array_slice( $compact, 0, 50 )
-        ];
-        return apply_filters( 'dt_get_viewable_compact', $return, $post_type, $search_string, $args );
+            "posts" => self::capture_viewable_compact_post_record_status( $post_type, array_slice( $compact, 0, 50 ) )
+        ], $post_type, $search_string, $args );
+    }
+
+    /**
+     * Capture and update viewable compact post record status
+     *
+     * @param string $post_type
+     * @param array $posts
+     *
+     * @return array
+     */
+    public static function capture_viewable_compact_post_record_status( string $post_type, array $posts ): array {
+
+        // Ensure there are valid posts to process
+        if ( empty( $posts ) ) {
+            return $posts;
+        }
+
+        // Collate all compact ids
+        $compact_ids = [];
+        foreach ( $posts as $compact ) {
+            $compact_ids[] = $compact['ID'];
+        }
+
+        // Determine current status meta values for identified ids
+        $compact_statuses = self::get_post_status( $compact_ids, $post_type );
+
+        // Iterate over compact post records and update status reference, accordingly
+        $updated_records = [];
+        foreach ( $posts as $compact ) {
+            if ( isset( $compact_statuses[ $compact['ID'] ] ) ) {
+                $compact['status'] = $compact_statuses[ $compact['ID'] ];
+            }
+
+            // Capture updated compact record
+            $updated_records[] = $compact;
+        }
+
+        return $updated_records;
     }
 
     /**
@@ -1152,16 +1200,18 @@ class DT_Posts extends Disciple_Tools_Posts {
             } else if ( isset( $a->user_caps ) && $a->user_caps === "magic_link" ){
                 $a->name = __( "Magic Link Submission", 'disciple_tools' );
             }
-            if ( !empty( $a->object_note ) ){
-                $activity_simple[] = [
-                    "meta_key" => $a->meta_key,
-                    "gravatar" => isset( $a->gravatar ) ? $a->gravatar : "",
-                    "name" => isset( $a->name ) ? wp_specialchars_decode( $a->name ) : __( "D.T System", 'disciple_tools' ),
+            if ( ! empty( $a->object_note ) ) {
+                $activity_obj = [
+                    "meta_key"    => $a->meta_key,
+                    "gravatar"    => isset( $a->gravatar ) ? $a->gravatar : "",
+                    "name"        => isset( $a->name ) ? wp_specialchars_decode( $a->name ) : __( "D.T System", 'disciple_tools' ),
                     "object_note" => $a->object_note,
-                    "hist_time" => $a->hist_time,
-                    "meta_id" => $a->meta_id,
-                    "histid" => $a->histid,
+                    "hist_time"   => $a->hist_time,
+                    "meta_id"     => $a->meta_id,
+                    "histid"      => $a->histid,
                 ];
+
+                $activity_simple[] = apply_filters( 'dt_format_post_activity', $activity_obj, $a );
             }
         }
 
@@ -1749,7 +1799,7 @@ class DT_Posts extends Disciple_Tools_Posts {
             $offset = esc_sql( sanitize_text_field( $query["offset"] ) );
             unset( $query["offset"] );
         }
-        $limit = 20;
+        $limit = 50;
 
         $permissions = [
             "shared_with" => [ "me" ]
@@ -1768,19 +1818,49 @@ class DT_Posts extends Disciple_Tools_Posts {
 
         // Prepare sql and execute search query
         $esc_like_search_sql = "'%" . esc_sql( $search ) . "%'";
+        $extra_fields = '';
+        $extra_joins  = '';
+        $extra_where = '';
+        if ( $filters['post'] ){
+            $extra_where .= "p.post_title LIKE " . $esc_like_search_sql;
+        }
+        if ( $filters['comment'] ){
+            $extra_fields .= "if( post_type_comments.comment_content LIKE " . $esc_like_search_sql . ", 'Y', 'N' ) comment_hit,";
+            $extra_fields .= "if(post_type_comments.comment_content LIKE " . $esc_like_search_sql . ", post_type_comments.comment_content, '') comment_hit_content,";
+            $extra_joins .= "LEFT JOIN $wpdb->comments as post_type_comments ON ( post_type_comments.comment_post_ID = p.ID AND comment_content LIKE " . $esc_like_search_sql . " )";
+            $extra_where .= ( empty( $extra_where ) ? '' : " OR " ) . "post_type_comments.comment_id IS NOT NULL";
+        }
+        if ( $filters['meta'] ){
+            $extra_fields .= "if(adv_search_post_meta.meta_value LIKE " . $esc_like_search_sql . ", 'Y', 'N') meta_hit,";
+            $extra_fields .= "if(adv_search_post_meta.meta_value LIKE " . $esc_like_search_sql . ", adv_search_post_meta.meta_value, '') meta_hit_value,";
+            $extra_joins .= "LEFT JOIN $wpdb->postmeta as adv_search_post_meta ON ( adv_search_post_meta.post_id = p.ID AND ((adv_search_post_meta.meta_key LIKE 'contact_%') OR (adv_search_post_meta.meta_key LIKE 'nickname')) AND (adv_search_post_meta.meta_key NOT LIKE 'contact_%_details') ) ";
+            $extra_where .= ( empty( $extra_where ) ? '' : " OR " ) . "adv_search_post_meta.meta_value LIKE " . $esc_like_search_sql;
+        }
+
+        // Ensure status filter is captured accordingly
+        $post_settings = self::get_post_settings( $post_type, false );
+        if ( ! empty( $filters['status'] ) && ! empty( $post_settings["status_field"] ) ) {
+            $status_where_condition = ( $filters['status'] === 'all' ) ? "IN (" . dt_array_to_sql( self::get_post_field_options_keys( $post_settings['fields'], $post_settings['status_field']['status_key'] ) ) . ")" : "= '" . $filters['status'] . "'";
+            $extra_fields           .= "if(adv_search_post_status.meta_value " . $status_where_condition . ", 'Y', 'N') status_hit,";
+            $extra_fields           .= "if(adv_search_post_status.meta_value " . $status_where_condition . ", adv_search_post_status.meta_value, '') status_hit_value,";
+            $extra_joins            .= "LEFT JOIN $wpdb->postmeta as adv_search_post_status ON ( ( adv_search_post_status.post_id = p.ID ) AND ( adv_search_post_status.meta_key " . ( isset( $post_settings['status_field'] ) ? sprintf( "= '%s'", $post_settings['status_field']['status_key'] ) : "LIKE '%status%'" ) . " ) )";
+        }
+
+        if ( empty( $extra_where ) ){
+            $extra_where = '1=1';
+        }
+
         $permissions_joins_sql = $fields_sql["joins_sql"];
         $permissions_where_sql = empty( $fields_sql["where_sql"] ) ? "" : ( $fields_sql["where_sql"] . " AND " );
-        $sql = "SELECT p.ID, p.post_title, p.post_type, p.post_date, if(p.post_title LIKE " . $esc_like_search_sql . ", 'Y', 'N') post_hit, if(post_type_comments.comment_content LIKE " . $esc_like_search_sql . ", 'Y', 'N') comment_hit, if(adv_search_post_meta.meta_value LIKE " . $esc_like_search_sql . ", 'Y', 'N') meta_hit, if(post_type_comments.comment_content LIKE " . $esc_like_search_sql . ", post_type_comments.comment_content, '') comment_hit_content, if(adv_search_post_meta.meta_value LIKE " . $esc_like_search_sql . ", adv_search_post_meta.meta_value, '') meta_hit_value
+        $sql = "SELECT p.ID, p.post_title, p.post_type, " . $extra_fields . " p.post_date, if ( p.post_title LIKE " . $esc_like_search_sql . ", 'Y', 'N') post_hit
             FROM $wpdb->posts p
-                LEFT JOIN $wpdb->comments as post_type_comments ON ( post_type_comments.comment_post_ID = p.ID AND comment_content LIKE " . $esc_like_search_sql . " )
-                LEFT JOIN $wpdb->postmeta as adv_search_post_meta ON ( adv_search_post_meta.post_id = p.ID AND ((adv_search_post_meta.meta_key LIKE 'contact_%') OR (adv_search_post_meta.meta_key LIKE 'nickname')) AND (adv_search_post_meta.meta_key NOT LIKE 'contact_%_details') ) " .
-                $permissions_joins_sql .
-                " WHERE " . $permissions_where_sql . " (p.post_status = 'publish') AND p.post_type = '" . esc_sql( $post_type ) . "' AND ( ( p.post_title LIKE " . $esc_like_search_sql . " )
-                OR post_type_comments.comment_id IS NOT NULL
-                OR p.ID IN ( SELECT post_id FROM " . $wpdb->postmeta . " WHERE meta_value LIKE " . $esc_like_search_sql . " ) )
-                GROUP BY p.ID, p.post_title, p.post_date, post_hit, comment_hit, meta_hit, comment_hit_content, meta_hit_value
-                ORDER BY p.post_title asc LIMIT " . $offset . ", " . $limit;
-
+            " . $extra_joins . "
+            " . $permissions_joins_sql . "
+            WHERE " . $permissions_where_sql . " (p.post_status = 'publish') AND p.post_type = '" . esc_sql( $post_type ) . "'
+            AND ( " . $extra_where . " )
+            GROUP BY p.ID, p.post_title, p.post_date
+            ORDER BY ( p.post_title LIKE '" . esc_sql( $search ) . "%' ) desc, p.post_title asc
+            LIMIT " . $offset . ", " . $limit;
         // phpcs:disable
         // WordPress.WP.PreparedSQL.NotPrepared
         $posts = $wpdb->get_results( $sql, OBJECT );
@@ -1803,28 +1883,12 @@ class DT_Posts extends Disciple_Tools_Posts {
         //remove duplicated non-hits
         foreach ( $posts as $post ) {
             $add_post = false;
-            if ( isset( $post->post_hit ) && isset( $post->comment_hit ) && isset( $post->meta_hit ) ) {
+            if ( isset( $post->post_hit, $post->comment_hit, $post->meta_hit ) ) {
                 if ( ! ( ( $post->post_hit === 'N' ) && ( $post->comment_hit === 'N' ) && ( $post->meta_hit === 'N' ) ) ) {
                     $add_post = true;
                 }
             } else {
                 $add_post = true;
-            }
-
-            // Apply search filters
-            if ( $add_post ) {
-                if ( isset( $post->post_hit ) && ( $post->post_hit === 'Y' ) &&
-                     isset( $filters['post'] ) && ! ( $filters['post'] ) ) {
-                    $add_post = false;
-                }
-                if ( isset( $post->comment_hit ) && ( $post->comment_hit === 'Y' ) &&
-                     isset( $filters['comment'] ) && ! ( $filters['comment'] ) ) {
-                    $add_post = false;
-                }
-                if ( isset( $post->meta_hit ) && ( $post->meta_hit === 'Y' ) &&
-                     isset( $filters['meta'] ) && ! ( $filters['meta'] ) ) {
-                    $add_post = false;
-                }
             }
 
             // Add post accordingly, based on flag!
@@ -1833,9 +1897,10 @@ class DT_Posts extends Disciple_Tools_Posts {
             }
         }
 
-        //decode special characters in post titles
+        //decode special characters in post titles & determine status
         foreach ( $post_hits as $hit ) {
             $hit->post_title = wp_specialchars_decode( $hit->post_title );
+            $hit->status     = self::get_post_field_option( $post_settings['fields'], $post_settings['status_field']['status_key'] ?? '', $hit->status_hit_value ?? '' );
         }
 
         //capture hits count and adjust future offsets

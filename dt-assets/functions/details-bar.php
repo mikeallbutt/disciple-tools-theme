@@ -59,6 +59,14 @@ function dt_print_details_bar(
                                                     <img class="dt-icon" src="<?php echo esc_html( get_template_directory_uri() . '/dt-assets/images/trash.svg' ) ?>"/>
                                                     <?php echo esc_html( sprintf( _x( "Delete %s", "Delete Contact", 'disciple_tools' ), DT_Posts::get_post_settings( $dt_post_type )["label_singular"] ) ) ?></a></li>
                                         <?php endif; ?>
+                                        <li><a class="open-merge-with-post"
+                                               data-post_type="<?php echo esc_html( $dt_post_type ) ?>">
+                                                <img class="dt-icon"
+                                                     src="<?php echo esc_html( get_template_directory_uri() . '/dt-assets/images/merge.svg?v=2' ) ?>"/>
+                                                <?php echo esc_html( sprintf( _x( "Merge with another %s", "Merge with another record", 'disciple_tools' ), DT_Posts::get_post_settings( $dt_post_type )["label_singular"] ) ) ?>
+                                            </a>
+                                        </li>
+                                        <?php get_template_part( 'dt-assets/parts/merge', 'details' ); ?>
                                         <?php do_action( 'dt_record_admin_actions', $dt_post_type, $post_id ); ?>
                                     </ul>
                                 </li>
@@ -84,8 +92,8 @@ function dt_print_details_bar(
                             <?php $picture = apply_filters( 'dt_record_picture', null, $dt_post_type, $post_id );
                             $icon = apply_filters( 'dt_record_icon', null, $dt_post_type, $dt_post );
 
-                            $type_color = isset( $dt_post['type'], $post_settings["fields"]["type"]["default"][$dt_post['type']["key"]]["color"] ) ? $post_settings["fields"]["type"]["default"][$dt_post['type']["key"]]["color"] : "#000000";
-                            $type_icon = isset( $dt_post['type'], $post_settings["fields"]["type"]["default"][$dt_post['type']["key"]]["icon"] ) ? $post_settings["fields"]["type"]["default"][$dt_post['type']["key"]]["icon"] : false;
+                            $type_color = isset( $dt_post['type']["key"], $post_settings["fields"]["type"]["default"][$dt_post['type']["key"]]["color"] ) ? $post_settings["fields"]["type"]["default"][$dt_post['type']["key"]]["color"] : "#000000";
+                            $type_icon = isset( $dt_post['type']["key"], $post_settings["fields"]["type"]["default"][$dt_post['type']["key"]]["icon"] ) ? $post_settings["fields"]["type"]["default"][$dt_post['type']["key"]]["icon"] : false;
                             if ( !empty( $picture ) ) : ?>
                                 <img src="<?php echo esc_html( $picture )?>" style="height:30px; vertical-align:middle">
                             <?php else : ?>
