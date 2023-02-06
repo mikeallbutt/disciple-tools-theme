@@ -247,9 +247,9 @@ class DT_Posts extends Disciple_Tools_Posts {
                 unset( $fields[ $field_key ] );
             }
             if ( $field_type === 'number' && (
-                isset( $post_settings['fields'][$field_key]['min_option'] ) &&
+                isset( $post_settings['fields'][$field_key]['min_option'] ) && ( !empty( $post_settings['fields'][$field_key]['min_option'] ) || $post_settings['fields'][$field_key]['min_option'] === 0 ) &&
                 $field_value < $post_settings['fields'][$field_key]['min_option'] ||
-                isset( $post_settings['fields'][$field_key]['max_option'] ) &&
+                isset( $post_settings['fields'][$field_key]['max_option'] ) && ( !empty( $post_settings['fields'][$field_key]['max_option'] ) || $post_settings['fields'][$field_key]['max_option'] === 0 ) &&
                 $field_value > $post_settings['fields'][$field_key]['max_option']
                 )
             ) {
@@ -509,9 +509,9 @@ class DT_Posts extends Disciple_Tools_Posts {
                 }
 
                 if ( $field_type === 'number' && (
-                    isset( $post_settings['fields'][$field_key]['min_option'] ) &&
+                    isset( $post_settings['fields'][$field_key]['min_option'] ) && ( !empty( $post_settings['fields'][$field_key]['min_option'] ) || $post_settings['fields'][$field_key]['min_option'] === 0 ) &&
                     $field_value < $post_settings['fields'][$field_key]['min_option'] ||
-                    isset( $post_settings['fields'][$field_key]['max_option'] ) &&
+                    isset( $post_settings['fields'][$field_key]['max_option'] ) && ( !empty( $post_settings['fields'][$field_key]['max_option'] ) || $post_settings['fields'][$field_key]['max_option'] === 0 ) &&
                     $field_value > $post_settings['fields'][$field_key]['max_option']
                     )
                 ) {
@@ -1137,10 +1137,11 @@ class DT_Posts extends Disciple_Tools_Posts {
         return wp_delete_comment( $comment_id );
     }
 
-    public static function toggle_post_comment_reaction( string $post_type, int $post_id, int $comment_id, int $user_id, string $reaction ){
+    public static function toggle_post_comment_reaction( string $post_type, int $post_id, int $comment_id, string $reaction ){
         if ( !self::can_update( $post_type, $post_id ) ) {
             return new WP_Error( __FUNCTION__, 'You do not have permission for this', [ 'status' => 403 ] );
         }
+        $user_id = get_current_user_id();
         // If the reaction exists for this user, then delete it
         $reactions = get_comment_meta( $comment_id, $reaction );
         foreach ( $reactions as $reaction_user_id ) {
