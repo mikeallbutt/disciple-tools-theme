@@ -258,10 +258,12 @@ class Disciple_Tools_Users
             }
         }
 
-        function asc_meth( $a, $b ){
-            $a['name'] = strtolower( $a['name'] );
-            $b['name'] = strtolower( $b['name'] );
-            return strcmp( $a['name'], $b['name'] );
+        if ( !function_exists( 'asc_meth' ) ){
+            function asc_meth( $a, $b ){
+                $a['name'] = strtolower( $a['name'] );
+                $b['name'] = strtolower( $b['name'] );
+                return strcmp( $a['name'], $b['name'] );
+            }
         }
 
         $list = apply_filters( 'dt_assignable_users_compact', $list, $search_string, $get_all );
@@ -549,7 +551,7 @@ class Disciple_Tools_Users
         }
 
         $can_not_promote_to_roles = [];
-        if ( !is_super_admin() && !dt_current_user_has_role( 'administrator' ) ){
+        if ( !dt_is_administrator() ){
             $can_not_promote_to_roles = [ 'administrator' ];
         }
         if ( !current_user_can( 'manage_dt' ) ){
@@ -741,6 +743,10 @@ class Disciple_Tools_Users
             }
         }
         if ( !empty( $body['locale'] ) ){
+            if ( empty( get_user_meta( $user->ID, 'dt_user_initial_setup_default_language', true ) ) ){
+                update_user_meta( $user->ID, 'dt_user_initial_setup_default_language', $body['locale'] );
+            }
+
             return self::update_user_locale( $user->ID, $body['locale'] );
         }
         if ( !empty( $body['add_languages'] ) ){
@@ -921,6 +927,9 @@ class Disciple_Tools_Users
             $args['locale'] = sanitize_text_field( wp_unslash( $_POST['locale'] ) );
         } else {
             $args['locale'] = 'en_US';
+        }
+        if ( !empty( $args['locale'] ) && empty( get_user_meta( $current_user->ID, 'dt_user_initial_setup_default_language', true ) ) ){
+            update_user_meta( $current_user->ID, 'dt_user_initial_setup_default_language', $args['locale'] );
         }
         // _user table defaults
         $result = wp_update_user( $args );

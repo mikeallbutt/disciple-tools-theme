@@ -93,14 +93,16 @@ if ( ! defined( 'DT_FUNCTIONS_READY' ) ){
      * @return string
      */
     if ( ! function_exists( 'dt_get_url_path' ) ) {
-        function dt_get_url_path( $ignore_query_parameters = false ) {
+        function dt_get_url_path( $ignore_query_parameters = false, $include_host = false ) {
             if ( isset( $_SERVER['HTTP_HOST'] ) ) {
                 $url  = ( !isset( $_SERVER['HTTPS'] ) || @( $_SERVER['HTTPS'] != 'on' ) ) ? 'http://'. sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ) ) : 'https://'. sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ) );
                 if ( isset( $_SERVER['REQUEST_URI'] ) ) {
                     $url .= esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) );
                 }
                 //remove the domain part. Ex: https://example.com/
-                $url = trim( str_replace( get_site_url(), '', $url ), '/' );
+                if ( $include_host === false ) {
+                    $url = trim( str_replace( get_site_url(), '', $url ), '/' );
+                }
 
                 //remove query parameters
                 if ( $ignore_query_parameters ){
@@ -314,7 +316,7 @@ if ( ! defined( 'DT_FUNCTIONS_READY' ) ){
     if ( !function_exists( 'dt_render_field_icon' ) ){
         function dt_render_field_icon( $field, $class = 'dt-icon', $default_to_name = false ){
             $icon_rendered = false;
-            if ( isset( $field['icon'] ) && !empty( $field['icon'] ) ){
+            if ( !empty( $field['icon'] ) && strpos( $field['icon'], 'undefined' ) === false ){
                 $icon_rendered = true;
                 if ( isset( $field['name'] ) ) {
                     $alt_tag = $field['name'];
@@ -325,14 +327,14 @@ if ( ! defined( 'DT_FUNCTIONS_READY' ) ){
                 }
                 ?>
 
-                <img class="<?php echo esc_html( $class ); ?>" src="<?php echo esc_url( $field['icon'] ) ?>" alt="<?php echo esc_html( $alt_tag ) ?>">
+                <img class="<?php echo esc_html( $class ); ?>" src="<?php echo esc_url( $field['icon'] ) ?>" alt="<?php echo esc_html( $alt_tag ) ?>" width="15" height="15">
 
                 <?php
-            } else if ( isset( $field['font-icon'] ) && !empty( $field['font-icon'] ) ){
+            } else if ( !empty( $field['font-icon'] ) && strpos( $field['font-icon'], 'undefined' ) === false ){
                 $icon_rendered = true;
                 ?>
 
-                <i class="<?php echo esc_html( $field['font-icon'] ); ?> <?php echo esc_html( $class ); ?>"></i>
+                <i class="<?php echo esc_html( $field['font-icon'] ); ?> <?php echo esc_html( $class ); ?>" style="font-size: 15px;"></i>
 
                 <?php
             } else if ( $default_to_name && !empty( $field['name'] ) ){
@@ -507,9 +509,11 @@ if ( ! defined( 'DT_FUNCTIONS_READY' ) ){
         } else {
             $can_update = true;
         }
-        if ( $can_update || isset( $post['assigned_to']['id'] ) && $post['assigned_to']['id'] == get_current_user_id() ) {
+        $field_disabled = !empty( $fields[$field_key]['readonly'] );
+        if ( !$field_disabled && ( $can_update || isset( $post['assigned_to']['id'] ) && $post['assigned_to']['id'] == get_current_user_id() ) ) {
             $disabled = '';
         }
+        $custom_display = !empty( $fields[$field_key]['custom_display'] );
         $required_tag = ( isset( $fields[$field_key]['required'] ) && $fields[$field_key]['required'] === true ) ? 'required' : '';
         $field_type = isset( $fields[$field_key]['type'] ) ? $fields[$field_key]['type'] : null;
         $is_private = isset( $fields[$field_key]['private'] ) && $fields[$field_key]['private'] === true;
@@ -517,9 +521,9 @@ if ( ! defined( 'DT_FUNCTIONS_READY' ) ){
         if ( !empty( $field_id_prefix ) ) {
             $display_field_id = $field_id_prefix . $field_key;
         }
-        if ( isset( $fields[$field_key]['type'] ) && empty( $fields[$field_key]['custom_display'] ) && empty( $fields[$field_key]['hidden'] ) ) {
+        if ( isset( $fields[$field_key]['type'] ) && !$custom_display && empty( $fields[$field_key]['hidden'] ) ) {
             /* breadrcrumb: new-field-type Add allowed field types */
-            $allowed_types = apply_filters( 'dt_render_field_for_display_allowed_types', [ 'key_select', 'multi_select', 'date', 'datetime', 'text', 'textarea', 'number', 'link', 'connection', 'location', 'location_meta', 'communication_channel', 'tags', 'user_select' ] );
+            $allowed_types = apply_filters( 'dt_render_field_for_display_allowed_types', [ 'boolean', 'key_select', 'multi_select', 'date', 'datetime', 'text', 'textarea', 'number', 'link', 'connection', 'location', 'location_meta', 'communication_channel', 'tags', 'user_select' ] );
             if ( !in_array( $field_type, $allowed_types ) ){
                 return;
             }
@@ -591,7 +595,15 @@ if ( ! defined( 'DT_FUNCTIONS_READY' ) ){
                 <?php endif ?>
             </div>
             <?php
-            if ( $field_type === 'key_select' ) :
+            if ( $field_type === 'boolean' ) {
+                $selected = !empty( $post[$field_key] ) ? 'selected' : '';
+                ?>
+                <select class="select-field" id="<?php echo esc_html( $display_field_id ); ?>" <?php echo esc_html( $disabled ); ?>>
+                    <option value="0"><?php esc_html_e( 'No', 'disciple_tools' ); ?></option>
+                    <option value="1" <?php echo esc_html( $selected ); ?>><?php esc_html_e( 'Yes', 'disciple_tools' ); ?></option>
+                </select>
+                <?php
+            } else if ( $field_type === 'key_select' ) :
                 $color_select = false;
                 $active_color = '';
                 if ( isset( $fields[$field_key]['default_color'] ) ) {
@@ -672,7 +684,7 @@ if ( ! defined( 'DT_FUNCTIONS_READY' ) ){
                             }
                             $class = ( in_array( $option_key, $haystack ) ) ?
                                 'selected-select-button' : 'empty-select-button'; ?>
-                            <button id="<?php echo esc_html( $option_key ) ?>" type="button" data-field-key="<?php echo esc_html( $field_key ); ?>"
+                            <button id="<?php echo esc_html( $option_key ) ?>" value="<?php echo esc_html( $option_key ) ?>" type="button" data-field-key="<?php echo esc_html( $field_key ); ?>"
                                     class="dt_multi_select <?php echo esc_html( $class ) ?> select-button button" <?php echo esc_html( $disabled ); ?>>
                                 <?php
                                 dt_render_field_icon( $option_value );
@@ -871,7 +883,7 @@ if ( ! defined( 'DT_FUNCTIONS_READY' ) ){
                 </div>
             <?php endif;
         }
-        do_action( 'dt_render_field_for_display_template', $post, $field_type, $field_key, $required_tag, $display_field_id );
+        do_action( 'dt_render_field_for_display_template', $post, $field_type, $field_key, $required_tag, $display_field_id, $custom_display );
     }
 
     function render_link_field( $field_key, $option_key, $value, $display_field_id, $meta_id, $required_tag, $disabled ) {

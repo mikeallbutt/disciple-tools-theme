@@ -533,7 +533,17 @@ class DT_Groups_Base extends DT_Module_Base {
                                             }
                                             ?>
                                             <div class="health-item" id="icon_<?php echo esc_attr( strtolower( $key ) ) ?>" title="<?php echo esc_attr( $option['description'] ); ?>">
-                                                <img src="<?php echo esc_attr( $option['icon'] ); ?>">
+                                                <?php
+                                                if ( !empty( $option['font-icon'] ) && strpos( $option['font-icon'], 'undefined' ) === false ){
+                                                    ?>
+                                                    <i class="<?php echo esc_html( $option['font-icon'] ); ?> dt-icon"></i>
+                                                    <?php
+                                                } elseif ( !empty( $option['icon'] ) && strpos( $option['icon'], 'undefined' ) === false ) {
+                                                    ?>
+                                                    <img src="<?php echo esc_attr( $option['icon'] ); ?>">
+                                                    <?php
+                                                }
+                                                ?>
                                             </div>
                                         <?php endif; ?>
                                     <?php endforeach; ?>
@@ -620,7 +630,7 @@ class DT_Groups_Base extends DT_Module_Base {
                 </span>
                     </div>
                 </div>
-                <button class="close-button" data-close aria-label="Close modal" type="button">
+                <button class="close-button" data-close aria-label="<?php esc_html_e( 'Close', 'disciple_tools' ); ?>" type="button">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>

@@ -220,7 +220,7 @@ class DT_Contacts_Base {
                         'icon' => get_template_directory_uri() . '/dt-assets/images/viber.svg'
                     ],
                     'Whatsapp' => [
-                        'name' => __( 'Whatsapp', 'disciple_tools' ),
+                        'name' => __( 'WhatsApp', 'disciple_tools' ),
                         'link' => 'https://api.whatsapp.com/send?phone=PHONE_NUMBER_NO_PLUS',
                         'icon' => get_template_directory_uri() . '/dt-assets/images/signal.svg'
                     ],
@@ -386,7 +386,7 @@ class DT_Contacts_Base {
     public static function dt_record_admin_actions( $post_type, $post_id ){
         if ( $post_type === 'contacts' ){
             $post = DT_Posts::get_post( $post_type, $post_id );
-            if ( empty( $post['archive'] ) && isset( $post['type'] ) && ( $post['type']['key'] === 'personal' || $post['type']['key'] === 'placeholder' ) ) :?>
+            if ( empty( $post['archive'] ) && isset( $post['type']['key'] ) && ( $post['type']['key'] === 'personal' || $post['type']['key'] === 'placeholder' ) ) :?>
                 <li>
                     <a data-open="archive-record-modal">
                         <img class="dt-icon" src="<?php echo esc_html( get_template_directory_uri() . '/dt-assets/images/archive.svg?v=2' ) ?>"/>
@@ -429,7 +429,7 @@ class DT_Contacts_Base {
                     <button class="button alert loader" type="button" id="archive-record">
                         <?php esc_html_e( 'Archive', 'disciple_tools' ); ?>
                     </button>
-                    <button class="close-button" data-close aria-label="Close modal" type="button">
+                    <button class="close-button" data-close aria-label="<?php esc_html_e( 'Close', 'disciple_tools' ); ?>" type="button">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
@@ -464,7 +464,7 @@ class DT_Contacts_Base {
                 <button class="button loader" type="button" id="confirm-type-close" data-field="closed">
                     <?php echo esc_html__( 'Confirm', 'disciple_tools' )?>
                 </button>
-                <button class="close-button" data-close aria-label="Close modal" type="button">
+                <button class="close-button" data-close aria-label="<?php esc_html_e( 'Close', 'disciple_tools' ); ?>" type="button">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
@@ -692,43 +692,6 @@ class DT_Contacts_Base {
                         $sections[$already_assigned]['label'] = esc_html( $label );
 
                     }
-                }
-            }
-
-            // Handle default comment types, only adding if not already assigned.
-            $default_types = [
-                [
-                    'key' => 'activity',
-                    'label' => __( 'Activity', 'disciple_tools' ),
-                    'selected_by_default' => true,
-                    'always_show' => true,
-                    'enabled' => true
-                ],
-                [
-                    'key' => 'comment',
-                    'label' => __( 'Comment', 'disciple_tools' ),
-                    'selected_by_default' => true,
-                    'enabled' => true
-                ]
-            ];
-            foreach ( $default_types as $type ){
-                if ( $this->comm_channel_comment_section_already_assigned( $sections, $type['key'] ) === false ){
-                    array_unshift( $sections, $type );
-                }
-
-                // Force default comment types to top spots!
-                $type_idx = $this->comm_channel_comment_section_already_assigned( $sections, $type['key'] );
-                if ( $type_idx !== false ){
-                    $unshift_type = $sections[$type_idx];
-
-                    // Adjust enabled state accordingly; defaulting to configured, if not specified.
-                    if ( !isset( $unshift_type['enabled'] ) ){
-                        $unshift_type['enabled'] = $type['enabled'];
-                    }
-
-                    // Proceed with element unshift.
-                    unset( $sections[$type_idx] );
-                    array_unshift( $sections, $unshift_type );
                 }
             }
 
